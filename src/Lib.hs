@@ -1,22 +1,20 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveFoldable     #-}
-{-# LANGUAGE DeriveFunctor      #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
-module Lib
-  ( masterP
-  , workerP
-  )
-  where
+module Lib where
 
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Distributed.Process
                    (NodeId(..), Process, ProcessId, WhereIsReply(..),
-                   getSelfPid, liftIO, match, matchAny, receiveTimeout,
-                   register, say, send, whereisRemoteAsync)
+                   expectTimeout, getSelfPid, liftIO, match, matchAny,
+                   receiveTimeout, register, say, send,
+                   whereisRemoteAsync)
 import           Control.Monad
                    (when)
 import           Control.Monad.Reader
@@ -67,6 +65,10 @@ dequeue (Queue (Enqueue []) (Dequeue [])) = (Nothing, mempty)
 dequeue (Queue (Enqueue es) (Dequeue (d:ds))) = (Just d, mkQueue es ds)
 dequeue _ = error "unexpected invariant: front of queue is empty but rear is not"
 
+isEmpty :: Queue a -> Bool
+isEmpty (Queue (Enqueue []) (Dequeue [])) = True
+isEmpty _                                 = False
+
 ------------------------------------------------------------------------
 
 data Task = Task String
@@ -93,33 +95,32 @@ instance Binary Message
 
 ------------------------------------------------------------------------
 
-workerP :: NodeId -> Process ()
-workerP nid = do
+workerP :: Either NodeId ProcessId -> Maybe ProcessId -> Process ()
+workerP master mscheduler = do
   self <- getSelfPid
   say $ printf "slave alive on %s" (show self)
-  master <- waitForMaster nid
-  send master (AskForTask self)
-  stateMachineProcess (self, master) () workerSM
+  pid <- case master of
+    Left  nid -> waitForNode nid "master"
+    Right pid -> return pid
+  case mscheduler of
+    Nothing        -> send pid (AskForTask self)
+    Just scheduler -> send scheduler (Send self (AskForTask self) pid)
+  stateMachineProcess (self, pid) () mscheduler workerSM
 
-waitForMaster :: NodeId -> Process ProcessId
-waitForMaster masterNid = do
-  say $ printf "waiting for master on %s" (show masterNid)
-  whereisRemoteAsync masterNid "taskQueue"
-  mpid <- receiveTimeout 1000
-    [ match (\(WhereIsReply _ (Just pid)) -> do
-                say $ printf "found master on %s" (show pid)
-                return pid)
-    , match (\(WhereIsReply _ Nothing)    -> do
-                say $ printf "didn't find master."
-                liftIO (threadDelay 1000000)
-                waitForMaster masterNid)
-    , matchAny (\msg                      -> do
-                   say $ printf "unknown message: %s" (show msg)
-                   waitForMaster masterNid)
-    ]
-  maybe (waitForMaster masterNid) return mpid
+waitForNode :: NodeId -> String -> Process ProcessId
+waitForNode nid name = do
+  say (printf "waiting for %s to appear on %s" name (show nid))
+  whereisRemoteAsync nid name
+  reply <- expectTimeout 1000
+  case reply of
+    Just (WhereIsReply _ (Just pid)) -> do
+      say (printf "found %s!" name)
+      return pid
+    _                                -> do
+      liftIO (threadDelay 10000)
+      waitForNode nid name
 
-workerSM :: Message -> StateMachine (ProcessId, ProcessId) () Message ()
+workerSM :: Message -> StateMachine (ProcessId, ProcessId) () Message
 workerSM (DeliverTask task@(Task descr)) = do
   tell $ printf "running: %s" (show task)
   Summary exs fails <- liftIO $ runTests descr
@@ -132,14 +133,14 @@ workerSM _ = error "invalid state transition"
 
 ------------------------------------------------------------------------
 
-masterP :: [String] -> Process ()
-masterP args = do
+masterP :: [String] -> Maybe ProcessId -> Process ()
+masterP args mscheduler = do
   self <- getSelfPid
   say $ printf "master alive on %s: %s" (show self) (unwords args)
-  register "taskQueue" self
+  register "master" self
   let n = length args
       q = foldl' (\akk -> (enqueue akk) . Task) mempty args
-  stateMachineProcess () (MasterState n  q  mempty) masterSM
+  stateMachineProcess () (MasterState n q mempty) mscheduler masterSM
 
 data MasterState = MasterState
   { step    :: Int
@@ -147,7 +148,7 @@ data MasterState = MasterState
   , summary :: Summary
   }
 
-masterSM :: Message -> StateMachine () MasterState Message ()
+masterSM :: Message -> StateMachine () MasterState Message
 masterSM (AskForTask pid) = do
   q <- gets queue
   case dequeue q of
@@ -172,3 +173,18 @@ masterSM (TaskFinished pid task result) = do
                     , summary = summary''
                     })
 masterSM _ = error "invalid state transition"
+
+------------------------------------------------------------------------
+
+newtype Model = Model Int
+  deriving (Eq, Show, Num)
+
+next :: Model -> Message -> Model
+next m (AskForTask _)       = m
+next m (DeliverTask _)      = m
+next m (TaskFinished _ _ _) = m - 1
+next m WorkDone             = m
+
+post :: Model -> Message -> Bool
+post m WorkDone = m == 0
+post _ _        = True
