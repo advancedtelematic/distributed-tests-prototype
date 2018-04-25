@@ -1,4 +1,9 @@
 module Linearisability
+  ( History
+  , linearisable
+  , trace
+  , wellformed
+  )
   where
 
 import           Control.Distributed.Process
@@ -64,17 +69,6 @@ linearisable transition postcondition model0 es =
             any' p xs = any p xs
 
 ------------------------------------------------------------------------
-
-prettyPrintHistory
-  :: (Show inv, Show resp)
-  => (pid -> String) -> History pid inv resp -> String
-prettyPrintHistory ppPid = foldr go ""
-  where
-    go (pid, Left  inv)  ih = printf "> %s  [%s]\n%s" (show inv)  (ppPid pid) ih
-    go (pid, Right resp) ih = printf "< %s  [%s]\n%s" (show resp) (ppPid pid) ih
-
-prettyPrintHistoryProcessId :: (Show inv, Show resp) => History ProcessId inv resp -> String
-prettyPrintHistoryProcessId = prettyPrintHistory prettyPrintProcessId
 
 prettyPrintProcessId :: ProcessId -> String
 prettyPrintProcessId = reverse . takeWhile (/= ':') . reverse . show

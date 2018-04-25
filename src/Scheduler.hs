@@ -3,7 +3,16 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Scheduler where
+module Scheduler
+  ( SchedulerSupervisor(..)
+  , SchedulerCount(..)
+  , SchedulerSequential(..)
+  , SchedulerHistory(..)
+  , SchedulerEnv(..)
+  , schedulerP
+  , makeSchedulerState
+  )
+  where
 
 import           Control.Concurrent
                    (threadDelay)

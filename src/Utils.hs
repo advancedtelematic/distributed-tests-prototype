@@ -1,4 +1,8 @@
-module Utils where
+module Utils
+  ( withLocalNode
+  , runLocalProcess
+  )
+  where
 
 import           Control.Concurrent.STM
                    (atomically, newEmptyTMVar, putTMVar, takeTMVar)
