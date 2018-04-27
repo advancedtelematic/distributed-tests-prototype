@@ -8,7 +8,7 @@ module QuickCheckHelpers
   where
 
 import           Control.Arrow
-                   ((***))
+                   (second)
 import           Control.Distributed.Process
                    (Process)
 import           Control.Monad.State
@@ -46,8 +46,8 @@ generateRequests
   -> (model -> Either req resp -> model)
   -> model
   -> Gen [req]
-generateRequests generator preconditions transitions model =
-  evalStateT (generateRequestsStateT generator preconditions transitions) model
+generateRequests generator preconditions transitions =
+  evalStateT (generateRequestsStateT generator preconditions transitions)
 
 generateParallelRequests
   :: (model -> Gen req)
@@ -82,8 +82,7 @@ parallelSafe
   -> [req]
   -> Bool
 parallelSafe preconditions transitions model0
-  = and
-  . map (preconditionsHold model0)
+  = all (preconditionsHold model0)
   . permutations
   where
     preconditionsHold _     []           = True
@@ -135,7 +134,7 @@ shrinkParallelRequests shrinker preconditions transitions model (prefix, suffix)
   where
     pickOneReturnRest :: [a] -> [(a, [a])]
     pickOneReturnRest []       = []
-    pickOneReturnRest (x : xs) = (x, xs) : map (id *** (x :)) (pickOneReturnRest xs)
+    pickOneReturnRest (x : xs) = (x, xs) : map (second (x :)) (pickOneReturnRest xs)
 
     moveSuffixToPrefix =
       [ (prefix ++ [prefix'], suffix')
