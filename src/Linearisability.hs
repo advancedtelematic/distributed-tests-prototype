@@ -1,4 +1,9 @@
 module Linearisability
+  ( History
+  , linearisable
+  , trace
+  , wellformed
+  )
   where
 
 import           Control.Distributed.Process
@@ -26,7 +31,7 @@ findResponse :: Eq pid => pid -> History pid inv resp -> [(resp, History pid inv
 findResponse _   []                                      = []
 findResponse pid ((pid', Right resp) : es) | pid == pid' = [(resp, es)]
 findResponse pid (e                  : es)               =
-  [ (resp, (e : es')) | (resp, es') <- findResponse pid es ]
+  [ (resp, e : es') | (resp, es') <- findResponse pid es ]
 
 interleavings :: Eq pid => History pid inv resp -> Forest (Operation pid inv resp)
 interleavings [] = []
@@ -64,17 +69,6 @@ linearisable transition postcondition model0 es =
             any' p xs = any p xs
 
 ------------------------------------------------------------------------
-
-prettyPrintHistory
-  :: (Show inv, Show resp)
-  => (pid -> String) -> History pid inv resp -> String
-prettyPrintHistory ppPid = foldr go ""
-  where
-    go (pid, Left  inv)  ih = printf "> %s  [%s]\n%s" (show inv)  (ppPid pid) ih
-    go (pid, Right resp) ih = printf "< %s  [%s]\n%s" (show resp) (ppPid pid) ih
-
-prettyPrintHistoryProcessId :: (Show inv, Show resp) => History ProcessId inv resp -> String
-prettyPrintHistoryProcessId = prettyPrintHistory prettyPrintProcessId
 
 prettyPrintProcessId :: ProcessId -> String
 prettyPrintProcessId = reverse . takeWhile (/= ':') . reverse . show
@@ -119,9 +113,9 @@ isSequential history = case history of
   where
     go []
       = Right ()
-    go ((pid, Right resp) : [])
+    go [(pid, Right resp)]
       = Left (LoneResponse pid resp)
-    go ((_, Left _) : [])
+    go [(_, Left _)]
       = Right ()
     go ((pid, Left inv) : (pid', Right resp) : hist)
       | pid == pid' = go hist

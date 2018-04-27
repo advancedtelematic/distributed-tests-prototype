@@ -3,7 +3,16 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Scheduler where
+module Scheduler
+  ( SchedulerSupervisor(..)
+  , SchedulerCount(..)
+  , SchedulerSequential(..)
+  , SchedulerHistory(..)
+  , SchedulerEnv(..)
+  , schedulerP
+  , makeSchedulerState
+  )
+  where
 
 import           Control.Concurrent
                    (threadDelay)
@@ -41,22 +50,22 @@ import           StateMachine
 
 ------------------------------------------------------------------------
 
-data SchedulerSupervisor = SchedulerSupervisor ProcessId
+newtype SchedulerSupervisor = SchedulerSupervisor ProcessId
   deriving Generic
 
 instance Binary SchedulerSupervisor
 
-data SchedulerCount = SchedulerCount Int
+newtype SchedulerCount = SchedulerCount Int
   deriving Generic
 
 instance Binary SchedulerCount
 
-data SchedulerSequential = SchedulerSequential [(ProcessId, ProcessId)]
+newtype SchedulerSequential = SchedulerSequential [(ProcessId, ProcessId)]
   deriving Generic
 
 instance Binary SchedulerSequential
 
-data SchedulerHistory pid inv resp = SchedulerHistory (History pid inv resp)
+newtype SchedulerHistory pid inv resp = SchedulerHistory (History pid inv resp)
   deriving Generic
 
 instance (Binary pid, Binary inv, Binary resp) => Binary (SchedulerHistory pid inv resp)
@@ -96,8 +105,7 @@ pickProcessPair :: Scheduler input output model (Maybe (ProcessId, ProcessId))
 pickProcessPair = do
   SchedulerState {..} <- get
   case sequential of
-    processPair : _ -> do
-      return (Just processPair)
+    processPair : _ -> return (Just processPair)
     []              -> case M.keys mailboxes of
       []           -> return Nothing
       processPairs -> do

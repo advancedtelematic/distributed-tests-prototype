@@ -161,7 +161,7 @@ shrinker
   => ModelF acc
   -> ([BankRequestF acc], [BankRequestF acc])
   -> [([BankRequestF acc], [BankRequestF acc])]
-shrinker model = shrinkParallelRequests shrinker1 precondition next' model
+shrinker = shrinkParallelRequests shrinker1 precondition next'
 
 ------------------------------------------------------------------------
 
@@ -253,7 +253,7 @@ setup seed = do
   bankPid    <- spawnLocal (bankP   True)
   client1Pid <- spawnLocal (clientP True)
   client2Pid <- spawnLocal (clientP True)
-  mapM_ (flip send (SchedulerPid schedulerPid)) [bankPid, client1Pid, client2Pid]
+  mapM_ (`send` (SchedulerPid schedulerPid)) [bankPid, client1Pid, client2Pid]
   return ([client1Pid, client2Pid], bankPid, schedulerPid)
 
 prop_bank :: Int -> Property

@@ -1,4 +1,8 @@
-module Utils where
+module Utils
+  ( withLocalNode
+  , runLocalProcess
+  )
+  where
 
 import           Control.Concurrent.STM
                    (atomically, newEmptyTMVar, putTMVar, takeTMVar)
@@ -21,8 +25,7 @@ import           System.Random
 ------------------------------------------------------------------------
 
 withLocalNode :: (LocalNode -> IO a) -> IO a
-withLocalNode k = do
-  bracket setup cleanup (k . snd)
+withLocalNode k = bracket setup cleanup (k . snd)
   where
     setup = do
       transport <- makeTransport
@@ -35,16 +38,16 @@ withLocalNode k = do
 
     makeTransport = do
       port       <- randomRIO (1024, 65535 :: Int)
-      etransport <- createTransport "127.0.0.1" (show port) (\port' -> ("127.0.0.1", port')) defaultTCPParameters
+      etransport <- createTransport "127.0.0.1" (show port)
+                      (\port' -> ("127.0.0.1", port')) defaultTCPParameters
       case etransport of
         Left  _         -> makeTransport
         Right transport -> return transport
 
 runLocalProcess :: Process a -> IO a
-runLocalProcess process = do
-  withLocalNode $ \node -> do
-    resultVar <- atomically newEmptyTMVar
-    runProcess node $ do
-      result <- process
-      liftIO (atomically (putTMVar resultVar result))
-    atomically (takeTMVar resultVar)
+runLocalProcess process = withLocalNode $ \node -> do
+  resultVar <- atomically newEmptyTMVar
+  runProcess node $ do
+    result <- process
+    liftIO (atomically (putTMVar resultVar result))
+  atomically (takeTMVar resultVar)

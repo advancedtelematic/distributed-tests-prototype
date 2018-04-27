@@ -51,7 +51,7 @@ data SchedulerMessage input output
 
 instance (Binary input, Binary output) => Binary (SchedulerMessage input output)
 
-data SchedulerPid = SchedulerPid ProcessId
+newtype SchedulerPid = SchedulerPid ProcessId
   deriving Generic
 
 instance Binary SchedulerPid
